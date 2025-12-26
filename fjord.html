@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fjord | Infinite Edition</title>
+    <style>
+        :root {
+            --sky-bg: #fdf6f0; 
+            --sky-panel: #ffffff;
+            --sky-border: #e8d5cc;
+            --sky-accent: #ffb7b2; 
+            --tides-color: #a0e7e5; 
+            --pulse-color: #ffd8a8;
+            --float-color: #b2cefe;
+            --danger: #ff8b94; 
+            --text-main: #6b5b5b; 
+            --text-muted: #a89a9a;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(180deg, #fdf6f0 0%, #eef6fc 100%);
+            color: var(--text-main);
+            display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #init-shield {
+            position: fixed; inset: 0; background: var(--sky-bg); z-index: 1000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            cursor: pointer; letter-spacing: 12px; font-weight: 300; font-size: 20px;
+        }
+        #init-shield span { font-size: 10px; letter-spacing: 2px; margin-top: 20px; opacity: 0.5; }
+
+        .device {
+            background: var(--sky-panel); border: 2px solid var(--sky-border);
+            border-radius: 40px; padding: 40px; width: 95vw; max-width: 600px;
+            box-shadow: 0 10px 30px rgba(232, 213, 204, 0.2);
+            position: relative;
+        }
+
+        .top-deck { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .brand { font-weight: 300; letter-spacing: 6px; font-size: 16px; text-transform: uppercase; }
+        
+        .switches { display: flex; gap: 6px; }
+        .sw {
+            background: #fff; border: 1.5px solid var(--sky-border);
+            padding: 10px 18px; border-radius: 50px; color: var(--text-muted);
+            font-size: 9px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: all 0.1s ease;
+        }
+        .sw.active { color: #fff; border-color: transparent; }
+        .sw.active-pan { background: var(--tides-color); }
+        .sw.active-pulse { background: var(--pulse-color); }
+        .sw.active-float { background: var(--float-color); }
+        .sw.active-freeze { background: var(--text-main); }
+
+        .pads { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 25px; }
+        .pad {
+            aspect-ratio: 1.1; background: #fff; border: 1.5px solid var(--sky-border);
+            border-radius: 16px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 18px; font-weight: 600; transition: transform 0.05s, background 0.1s;
+        }
+        .pad[data-active="true"] { 
+            background: var(--sky-accent) !important; 
+            color: #fff !important; 
+            border-color: var(--sky-accent) !important; 
+            transform: scale(0.94); 
+        }
+
+        .control-row { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr; gap: 12px; margin-bottom: 25px; }
+        .ui-box {
+            background: #fcfcfc; border: 1.5px solid var(--sky-border);
+            border-radius: 14px; padding: 12px; display: flex; align-items: center; gap: 8px;
+        }
+        .ui-label { font-size: 8px; font-weight: 900; color: var(--text-muted); text-transform: uppercase; }
+
+        select, input { width: 100%; border: none; background: transparent; font-size: 10px; font-weight: 800; outline: none; color: inherit; }
+
+        .action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .btn {
+            padding: 16px 0; border-radius: 14px; font-weight: 800; text-transform: uppercase;
+            font-size: 10px; cursor: pointer; border: 1.5px solid; background: #fff; transition: all 0.1s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .btn.active-bypass { background: var(--danger); color: #fff; border-color: var(--danger); }
+        .btn-play.playing { background: var(--tides-color); color: #fff; border-color: var(--tides-color); }
+
+        #toast {
+            position: fixed; top: 20px; background: var(--text-main); color: white; padding: 12px 24px;
+            border-radius: 12px; font-weight: 800; font-size: 10px; transform: translateY(-100px);
+            transition: transform 0.3s ease; z-index: 2000;
+        }
+        #toast.visible { transform: translateY(0); }
+    </style>
+</head>
+<body>
+
+<div id="init-shield">FJORD <span>TAP TO ACTIVATE</span></div>
+<div id="toast">DNA UPDATED</div>
+
+<div class="device">
+    <header class="top-deck">
+        <div class="brand">FJ<b>ORD</b></div>
+        <div class="switches">
+            <div class="sw" id="sw-pan">Pan</div>
+            <div class="sw" id="sw-pulse">Pulse</div>
+            <div class="sw" id="sw-float">Float</div>
+            <div class="sw" id="sw-freeze">Freeze</div>
+        </div>
+    </header>
+
+    <div id="pad-grid" class="pads"></div>
+
+    <div class="control-row">
+        <div class="ui-box">
+            <select id="voicing-select">
+                <option value="major9">Major 9th</option>
+                <option value="minor11">Minor 11th</option>
+                <option value="dominant13">Dominant 13th</option>
+                <option value="openPower">Open Power</option>
+                <option value="neoSoul">Neo-Soul Mood</option>
+            </select>
+        </div>
+        <div class="ui-box">
+            <span class="ui-label">BPM</span>
+            <input type="number" id="bpm-input" value="80" min="40" max="240">
+        </div>
+        <div class="ui-box" style="justify-content: space-between;">
+            <button class="oct-btn" id="oct-down" style="border:none; background:none; cursor:pointer;">−</button>
+            <div id="oct-display" style="font-size: 8px; font-weight: 900;">MID</div>
+            <button class="oct-btn" id="oct-up" style="border:none; background:none; cursor:pointer;">+</button>
+        </div>
+    </div>
+
+    <div class="action-grid">
+        <button class="btn" id="btn-next">Next</button>
+        <button class="btn" id="btn-bypass">FX Bypass</button>
+        <button class="btn btn-play" id="btn-play">Play</button>
+        <button class="btn" style="color: var(--danger); border-color: var(--danger);" id="btn-export">Export</button>
+    </div>
+</div>
+
+<script>
+    const EngineConfig = {
+        DEFAULT_GAIN: 0.6,
+        LFO_FLOAT_BASE_LP: 2200,
+        LFO_FLOAT_BASE_HP: 400,
+        LFO_FLOAT_DEPTH: 1800,
+        BPM_LIMITS: { min: 40, max: 240 },
+        POOL_SIZE: 32,
+        BPM_DEBOUNCE_MS: 300,
+        RAMP_TIME: 0.1,
+        SAMPLE_RATE: 44100
+    };
+
+    const UIState = {
+        oct: 0, bpm: 80, voicing: 'major9', playing: false, freeze: false, fxBypassed: false,
+        pan: false, pulse: false, float: false, pressedPads: new Set()
+    };
+
+    const AudioState = {
+        notes: ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C2'],
+        freqs: { 'C': 261.63, 'D': 293.66, 'E': 329.63, 'F': 349.23, 'G': 392.00, 'A': 440.00, 'B': 493.88, 'C2': 523.25 },
+        voicings: { 
+            major9: [0, 4, 7, 11, 14], minor11: [0, 3, 7, 10, 14, 17], dominant13: [0, 4, 7, 10, 14, 21], 
+            openPower: [0, 7, 12, 19, 24], neoSoul: [0, 3, 7, 11, 14] 
+        },
+        activeVoices: {},
+        gainPool: [],
+        timer: null
+    };
+
+    const GeneticState = {
+        customWave: null, waveType: 'sine', attack: 0.2, release: 1.2
+    };
+
+    let ctx, masterBus;
+    let pulseL, pulseR, filtL, filtR, masterPanner;
+    let panLFO, pulseLFO_L, pulseLFO_R, floatLFO_L, floatLFO_R;
+    const padElements = {};
+
+    function getBandlimitedWave(type, targetCtx) {
+        const n = 64; 
+        const real = new Float32Array(n);
+        const imag = new Float32Array(n);
+        for (let i = 1; i < n; i++) {
+            if (type === 'saw') imag[i] = (i % 2 === 0 ? -1 : 1) * (2 / (i * Math.PI));
+            else if (type === 'tri') {
+                if (i % 2 !== 0) {
+                    const k = (i - 1) / 2;
+                    imag[i] = (8 / (Math.PI * Math.PI)) * (Math.pow(-1, k) / (i * i));
+                }
+            } else if (type === 'organ') if (i < 5) imag[i] = 1 / i;
+        }
+        return targetCtx.createPeriodicWave(real, imag);
+    }
+
+    function getVoiceNodes() {
+        let vca = AudioState.gainPool.length > 0 ? AudioState.gainPool.pop() : ctx.createGain();
+        vca.gain.setValueAtTime(0, ctx.currentTime);
+        const osc = ctx.createOscillator();
+        const panner = ctx.createStereoPanner();
+        osc.connect(vca);
+        vca.connect(panner);
+        panner.connect(masterBus);
+        return { osc, vca, panner };
+    }
+
+    function returnVoiceToPool(voice) {
+        try { voice.osc.stop(); } catch(e) {}
+        voice.osc.disconnect();
+        voice.panner.disconnect();
+        if (AudioState.gainPool.length < EngineConfig.POOL_SIZE) AudioState.gainPool.push(voice.vca);
+        else voice.vca.disconnect();
+    }
+
+    async function initAudio() {
+        if (ctx) return;
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        masterBus = ctx.createGain();
+        masterBus.gain.value = EngineConfig.DEFAULT_GAIN;
+
+        const splitter = ctx.createChannelSplitter(2);
+        const merger = ctx.createChannelMerger(2);
+
+        filtL = ctx.createBiquadFilter(); filtR = ctx.createBiquadFilter();
+        filtL.type = 'lowpass'; filtR.type = 'highpass';
+        filtL.frequency.value = EngineConfig.LFO_FLOAT_BASE_LP;
+        filtR.frequency.value = EngineConfig.LFO_FLOAT_BASE_HP;
+        filtL.Q.value = 2.5; filtR.Q.value = 2.5;
+
+        pulseL = ctx.createGain(); pulseR = ctx.createGain();
+        masterPanner = ctx.createStereoPanner();
+
+        masterBus.connect(splitter);
+        splitter.connect(filtL, 0); splitter.connect(filtR, 1);
+        filtL.connect(pulseL); filtR.connect(pulseR);
+        pulseL.connect(merger, 0, 0); pulseR.connect(merger, 0, 1);
+        merger.connect(masterPanner);
+        masterPanner.connect(ctx.destination);
+
+        panLFO = createLFO(ctx, masterPanner.pan, 0, 0, 'sine');
+        pulseLFO_L = createLFO(ctx, pulseL.gain, 1, 0, 'sine');
+        pulseLFO_R = createLFO(ctx, pulseR.gain, 1, 0, 'sine');
+        floatLFO_L = createLFO(ctx, filtL.frequency, EngineConfig.LFO_FLOAT_BASE_LP, 0, 'sine');
+        floatLFO_R = createLFO(ctx, filtR.frequency, EngineConfig.LFO_FLOAT_BASE_HP, 0, 'sine');
+
+        updateLFORates();
+        requestAnimationFrame(syncUI);
+    }
+
+    function syncUI() {
+        for (let note in padElements) {
+            const isActive = UIState.pressedPads.has(note);
+            if (padElements[note].getAttribute('data-active') !== String(isActive)) {
+                padElements[note].setAttribute('data-active', isActive);
+            }
+        }
+        requestAnimationFrame(syncUI);
+    }
+
+    function createLFO(targetCtx, param, base, depth, type) {
+        const osc = targetCtx.createOscillator();
+        const gain = targetCtx.createGain();
+        osc.type = type; gain.gain.value = depth;
+        osc.connect(gain); gain.connect(param);
+        osc.start();
+        return { osc, gain, base };
+    }
+
+    function updateLFORates() {
+        if (!ctx) return;
+        const rate = UIState.bpm / 60;
+        panLFO.osc.frequency.setTargetAtTime(rate / 8, ctx.currentTime, 0.1);
+        pulseLFO_L.osc.frequency.setTargetAtTime(rate, ctx.currentTime, 0.1);
+        pulseLFO_R.osc.frequency.setTargetAtTime(rate, ctx.currentTime, 0.1);
+        floatLFO_L.osc.frequency.setTargetAtTime(rate / 4, ctx.currentTime, 0.1);
+        floatLFO_R.osc.frequency.setTargetAtTime(rate / 4, ctx.currentTime, 0.1);
+    }
+
+    // UPDATED: Refined FX logic to handle Bypass state
+    function updateFXNodes() {
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const ramp = EngineConfig.RAMP_TIME;
+
+        const isBypassed = UIState.fxBypassed;
+
+        // PAN (Sway)
+        const panDepth = (UIState.pan && !isBypassed) ? 0.6 : 0;
+        panLFO.gain.gain.setTargetAtTime(panDepth, now, ramp);
+        if (isBypassed || !UIState.pan) masterPanner.pan.setTargetAtTime(0, now, ramp);
+
+        // PULSE (Harmonic Tremolo)
+        const pulseDepth = (UIState.pulse && !isBypassed) ? 0.7 : 0;
+        pulseLFO_L.gain.gain.setTargetAtTime(pulseDepth, now, ramp);
+        pulseLFO_R.gain.gain.setTargetAtTime(pulseDepth * -1, now, ramp);
+        if (isBypassed || !UIState.pulse) {
+            pulseL.gain.setTargetAtTime(1, now, ramp);
+            pulseR.gain.setTargetAtTime(1, now, ramp);
+        }
+
+        // FLOAT (Divergent Filters)
+        const floatDepth = (UIState.float && !isBypassed) ? EngineConfig.LFO_FLOAT_DEPTH : 0;
+        floatLFO_L.gain.gain.setTargetAtTime(floatDepth, now, ramp);
+        floatLFO_R.gain.gain.setTargetAtTime(floatDepth * -0.5, now, ramp);
+        if (isBypassed || !UIState.float) {
+            filtL.frequency.setTargetAtTime(EngineConfig.LFO_FLOAT_BASE_LP, now, ramp);
+            filtR.frequency.setTargetAtTime(EngineConfig.LFO_FLOAT_BASE_HP, now, ramp);
+        }
+    }
+
+    function trigger(n, targetCtx = ctx, targetDest = masterBus, time = null) {
+        if (!targetCtx) return;
+        const now = time !== null ? time : targetCtx.currentTime;
+        const mult = Math.pow(2, UIState.oct);
+        const baseFreq = AudioState.freqs[n === 'C2' ? 'C' : n] * (n === 'C2' ? 2 : 1) * mult;
+        const intervals = [...AudioState.voicings[UIState.voicing], -12];
+        
+        const voices = intervals.map((semis, idx) => {
+            let voice = (targetCtx === ctx) ? getVoiceNodes() : (() => {
+                const osc = targetCtx.createOscillator();
+                const vca = targetCtx.createGain();
+                const panner = targetCtx.createStereoPanner();
+                osc.connect(vca); vca.connect(panner); panner.connect(targetDest);
+                return { osc, vca, panner };
+            })();
+
+            const { osc, vca, panner } = voice;
+            const spread = (UIState.pan && !UIState.fxBypassed) ? 1.6 / (intervals.length - 1) : 0;
+            const pos = (UIState.pan && !UIState.fxBypassed) ? (-0.8 + (idx * spread)) : 0;
+            panner.pan.setValueAtTime(pos, now);
+
+            if (semis === -12) osc.type = 'sine';
+            else if (GeneticState.customWave || GeneticState.waveType !== 'sine') {
+                const pWave = (targetCtx === ctx) ? GeneticState.customWave : getBandlimitedWave(GeneticState.waveType, targetCtx);
+                if (pWave) osc.setPeriodicWave(pWave); else osc.type = 'sine';
+            } else osc.type = 'sine';
+
+            osc.frequency.setValueAtTime(baseFreq * Math.pow(2, semis / 12), now);
+            vca.gain.setValueAtTime(0, now);
+            vca.gain.setTargetAtTime(semis === -12 ? 0.3 : (0.25 / Math.sqrt(intervals.length)), now, GeneticState.attack);
+            osc.start(now);
+            return voice;
+        });
+
+        if (targetCtx === ctx) AudioState.activeVoices[n] = voices;
+        return voices;
+    }
+
+    function release(n, force = false, targetCtx = ctx, time = null) {
+        const voicesList = (targetCtx === ctx) ? AudioState.activeVoices[n] : n;
+        if (!voicesList) return;
+        if (UIState.freeze && !force && targetCtx === ctx) return;
+        const now = time !== null ? time : targetCtx.currentTime;
+        voicesList.forEach(v => {
+            v.vca.gain.cancelScheduledValues(now);
+            v.vca.gain.setTargetAtTime(0, now, GeneticState.release);
+            if (targetCtx === ctx) setTimeout(() => returnVoiceToPool(v), GeneticState.release * 5000);
+            else v.osc.stop(now + GeneticState.release * 5);
+        });
+        if (targetCtx === ctx) delete AudioState.activeVoices[n];
+    }
+
+    document.getElementById('init-shield').onclick = async function() {
+        await initAudio(); this.style.display = 'none';
+    };
+
+    const grid = document.getElementById('pad-grid');
+    AudioState.notes.forEach(note => {
+        const p = document.createElement('div');
+        p.className = 'pad'; p.innerText = note.replace('2','');
+        const handleDown = (e) => { e.preventDefault(); if(!ctx) return; UIState.pressedPads.add(note); trigger(note); };
+        const handleUp = () => { if(!UIState.pressedPads.has(note)) return; UIState.pressedPads.delete(note); release(note); };
+        p.addEventListener('mousedown', handleDown); p.addEventListener('touchstart', handleDown);
+        p.addEventListener('mouseup', handleUp); p.addEventListener('touchend', handleUp); p.addEventListener('mouseleave', handleUp);
+        padElements[note] = p; grid.appendChild(p);
+    });
+
+    document.getElementById('sw-pan').onclick = function() { UIState.pan = !UIState.pan; this.classList.toggle('active-pan', UIState.pan); this.classList.toggle('active', UIState.pan); updateFXNodes(); };
+    document.getElementById('sw-pulse').onclick = function() { UIState.pulse = !UIState.pulse; this.classList.toggle('active-pulse', UIState.pulse); this.classList.toggle('active', UIState.pulse); updateFXNodes(); };
+    document.getElementById('sw-float').onclick = function() { UIState.float = !UIState.float; this.classList.toggle('active-float', UIState.float); this.classList.toggle('active', UIState.float); updateFXNodes(); };
+    document.getElementById('sw-freeze').onclick = function() { UIState.freeze = !UIState.freeze; this.classList.toggle('active-freeze', UIState.freeze); this.classList.toggle('active', UIState.freeze); if(!UIState.freeze) { Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); UIState.pressedPads.clear(); } };
+
+    // BYPASS: Now specifically resets Pan, Pulse, and Float LFO depths without affecting Master Vol
+    document.getElementById('btn-bypass').onclick = function() {
+        UIState.fxBypassed = !UIState.fxBypassed;
+        this.classList.toggle('active-bypass', UIState.fxBypassed);
+        updateFXNodes();
+        const t = document.getElementById('toast'); 
+        t.innerText = UIState.fxBypassed ? "FX BYPASS: ON" : "FX BYPASS: OFF"; 
+        t.classList.add('visible');
+        setTimeout(() => t.classList.remove('visible'), 800);
+    };
+
+    document.getElementById('btn-next').onclick = function() {
+        const waveOptions = [{id:'saw',name:'Saw'},{id:'tri',name:'Tri'},{id:'organ',name:'Organ'},{id:'sine',name:'Sine'}];
+        const pick = waveOptions[Math.floor(Math.random() * waveOptions.length)];
+        GeneticState.customWave = pick.id === 'sine' ? null : getBandlimitedWave(pick.id, ctx);
+        GeneticState.waveType = pick.id; GeneticState.attack = 0.1 + Math.random() * 0.6; GeneticState.release = 0.5 + Math.random() * 2.0;
+        const t = document.getElementById('toast'); t.innerText = `DNA: ${pick.name}`; t.classList.add('visible');
+        setTimeout(() => t.classList.remove('visible'), 1000);
+    };
+
+    document.getElementById('btn-play').onclick = function() {
+        UIState.playing = !UIState.playing; this.classList.toggle('playing', UIState.playing);
+        if (UIState.playing) {
+            let i = 0; const seq = ['C', 'F', 'G', 'A'];
+            const loop = () => {
+                if (!UIState.playing) return;
+                const n = seq[i]; UIState.pressedPads.add(n); trigger(n);
+                setTimeout(() => { release(n); UIState.pressedPads.delete(n); }, (60/UIState.bpm)*3000);
+                i = (i + 1) % seq.length; AudioState.timer = setTimeout(loop, (60/UIState.bpm)*4000);
+            };
+            loop();
+        } else {
+            clearTimeout(AudioState.timer); Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); UIState.pressedPad
