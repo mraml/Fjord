@@ -417,4 +417,37 @@
             };
             loop();
         } else {
-            clearTimeout(AudioState.timer); Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); UIState.pressedPad
+            clearTimeout(AudioState.timer); Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); UIState.pressedPads.clear();
+        }
+    };
+
+    document.getElementById('btn-export').onclick = async function() {
+        const toast = document.getElementById('toast'); toast.innerText = "RENDERING..."; toast.classList.add('visible');
+        const seq = ['C', 'F', 'G', 'A']; const dur = (60/UIState.bpm)*4;
+        const offlineCtx = new OfflineAudioContext(2, EngineConfig.SAMPLE_RATE * dur * seq.length, EngineConfig.SAMPLE_RATE);
+        const oGain = offlineCtx.createGain(); oGain.gain.value = EngineConfig.DEFAULT_GAIN; oGain.connect(offlineCtx.destination);
+        seq.forEach((n, i) => { const v = trigger(n, offlineCtx, oGain, i*dur); release(v, true, offlineCtx, (i+1)*dur - 0.5); });
+        const buf = await offlineCtx.startRendering();
+        const url = URL.createObjectURL(bufferToWav(buf));
+        const a = document.createElement('a'); a.href = url; a.download = 'fjord_export.wav'; a.click();
+        toast.innerText = "DONE"; setTimeout(() => toast.classList.remove('visible'), 1000);
+    };
+
+    function bufferToWav(buffer) {
+        let n = buffer.numberOfChannels, len = buffer.length * n * 2 + 44, ab = new ArrayBuffer(len), view = new DataView(ab), pos = 0;
+        const s16 = (v) => { view.setInt16(pos, v, true); pos += 2; };
+        const s32 = (v) => { view.setUint32(pos, v, true); pos += 4; };
+        s32(0x46464952); s32(len-8); s32(0x45564157); s32(0x20746d66); s32(16); s16(1); s16(n); s32(buffer.sampleRate); s32(buffer.sampleRate*n*2); s16(n*2); s16(16); s32(0x61746164); s32(len-pos-4);
+        for(let i=0; i<buffer.length; i++) { for(let c=0; c<n; c++) { let s = Math.max(-1,Math.min(1,buffer.getChannelData(c)[i])); s16(s<0?s*0x8000:s*0x7FFF); } }
+        return new Blob([ab], {type:'audio/wav'});
+    }
+
+    document.getElementById('bpm-input').onchange = function() { UIState.bpm = Math.max(EngineConfig.BPM_LIMITS.min, Math.min(EngineConfig.BPM_LIMITS.max, this.value)); updateLFORates(); };
+    document.getElementById('oct-up').onclick = () => { UIState.oct = Math.min(2, UIState.oct + 1); updateOctDisplay(); };
+    document.getElementById('oct-down').onclick = () => { UIState.oct = Math.max(-2, UIState.oct - 1); updateOctDisplay(); };
+    function updateOctDisplay() { document.getElementById('oct-display').innerText = { "-2": "LOW--", "-1": "LOW", "0": "MID", "1": "HIGH", "2": "HIGH++" }[UIState.oct]; }
+    document.getElementById('voicing-select').onchange = (e) => UIState.voicing = e.target.value;
+</script>
+</body>
+</html>
+
