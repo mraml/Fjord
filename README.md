@@ -8,7 +8,7 @@ Fjord is a boutique ambient synthesizer designed for immersive soundscapes and h
 
 ## Musical Capabilities
 
-### 1. Harmonic Engine & Voicing
+### Harmonic Engine & Voicing
 
 Fjord utilizes a custom additive synthesis engine capable of generating complex, harmonically rich waveforms.
 
@@ -16,7 +16,7 @@ Fjord utilizes a custom additive synthesis engine capable of generating complex,
 - **Neo-Soul Mood:** A curated voicing designed for modern R&B and lo-fi textures.
 - **Genetic DNA:** The Next function utilizes band-limited synthesis to evolve the "DNA" of the patch, morphing between Sine, Saw, Triangle, and Organ characteristics while randomizing ADSR envelopes.
 
-### 2. Manual FX Chain (The "Behind the Scenes" Rack)
+### Manual FX Chain (The "Behind the Scenes" Rack)
 
 The effects are refined for organic movement and spatial depth:
 
@@ -26,7 +26,7 @@ The effects are refined for organic movement and spatial depth:
 
 **Float (Divergent Sweeps):** A dual-filter setup where a Low-Pass and High-Pass filter sweep in opposite directions. This creates a shifting frequency focus that maintains consistent perceived loudness while dramatically altering the timbre.
 
-### 3. Performance Features
+### Performance Features
 
 - **Freeze Mode:** Infinite sustain for drone generation and layering.
 - **FX Bypass:** A dedicated "dry" switch that instantly centers panners, resets filter frequencies, and disables tremolo modulation without interrupting the core oscillator tails.
