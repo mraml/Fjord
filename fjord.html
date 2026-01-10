@@ -89,11 +89,18 @@
         .btn-play.playing { background: var(--tides-color); color: #fff; border-color: var(--tides-color); }
 
         #toast {
-            position: fixed; top: 20px; background: var(--text-main); color: white; padding: 12px 24px;
-            border-radius: 12px; font-weight: 800; font-size: 10px; transform: translateY(-100px);
-            transition: transform 0.3s ease; z-index: 2000;
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--text-main); color: white; padding: 12px 24px;
+            border-radius: 12px; font-weight: 800; font-size: 10px; 
+            opacity: 0; transition: opacity 0.3s ease; z-index: 2000; pointer-events: none;
         }
-        #toast.visible { transform: translateY(0); }
+        #toast.visible { opacity: 1; }
+
+        .oct-btn {
+            border: none; background: none; cursor: pointer; font-size: 16px; 
+            font-weight: 800; color: var(--text-main); padding: 4px 8px;
+            touch-action: manipulation;
+        }
     </style>
 </head>
 <body>
@@ -129,9 +136,9 @@
             <input type="number" id="bpm-input" value="80" min="40" max="240">
         </div>
         <div class="ui-box" style="justify-content: space-between;">
-            <button class="oct-btn" id="oct-down" style="border:none; background:none; cursor:pointer;">−</button>
+            <button class="oct-btn" id="oct-down">−</button>
             <div id="oct-display" style="font-size: 8px; font-weight: 900;">MID</div>
-            <button class="oct-btn" id="oct-up" style="border:none; background:none; cursor:pointer;">+</button>
+            <button class="oct-btn" id="oct-up">+</button>
         </div>
     </div>
 
@@ -153,7 +160,9 @@
         POOL_SIZE: 32,
         BPM_DEBOUNCE_MS: 300,
         RAMP_TIME: 0.1,
-        SAMPLE_RATE: 44100
+        SAMPLE_RATE: 44100,
+        OCTAVE_MIN: -2,
+        OCTAVE_MAX: 2
     };
 
     const UIState = {
@@ -181,6 +190,20 @@
     let pulseL, pulseR, filtL, filtR, masterPanner;
     let panLFO, pulseLFO_L, pulseLFO_R, floatLFO_L, floatLFO_R;
     const padElements = {};
+    let bpmTimeout;
+
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.innerText = msg;
+        t.classList.add('visible');
+        setTimeout(() => t.classList.remove('visible'), 1000);
+    }
+
+    function updateOctaveDisplay() {
+        const display = document.getElementById('oct-display');
+        const labels = ['LOW', 'MID-LOW', 'MID', 'MID-HIGH', 'HIGH'];
+        display.innerText = labels[UIState.oct + 2];
+    }
 
     function getBandlimitedWave(type, targetCtx) {
         const n = 64; 
@@ -220,6 +243,12 @@
     async function initAudio() {
         if (ctx) return;
         ctx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // iOS fix: resume suspended context
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+        
         masterBus = ctx.createGain();
         masterBus.gain.value = EngineConfig.DEFAULT_GAIN;
 
@@ -281,7 +310,6 @@
         floatLFO_R.osc.frequency.setTargetAtTime(rate / 4, ctx.currentTime, 0.1);
     }
 
-    // UPDATED: Refined FX logic to handle Bypass state
     function updateFXNodes() {
         if (!ctx) return;
         const now = ctx.currentTime;
@@ -289,12 +317,10 @@
 
         const isBypassed = UIState.fxBypassed;
 
-        // PAN (Sway)
         const panDepth = (UIState.pan && !isBypassed) ? 0.6 : 0;
         panLFO.gain.gain.setTargetAtTime(panDepth, now, ramp);
         if (isBypassed || !UIState.pan) masterPanner.pan.setTargetAtTime(0, now, ramp);
 
-        // PULSE (Harmonic Tremolo)
         const pulseDepth = (UIState.pulse && !isBypassed) ? 0.7 : 0;
         pulseLFO_L.gain.gain.setTargetAtTime(pulseDepth, now, ramp);
         pulseLFO_R.gain.gain.setTargetAtTime(pulseDepth * -1, now, ramp);
@@ -303,7 +329,6 @@
             pulseR.gain.setTargetAtTime(1, now, ramp);
         }
 
-        // FLOAT (Divergent Filters)
         const floatDepth = (UIState.float && !isBypassed) ? EngineConfig.LFO_FLOAT_DEPTH : 0;
         floatLFO_L.gain.gain.setTargetAtTime(floatDepth, now, ramp);
         floatLFO_R.gain.gain.setTargetAtTime(floatDepth * -0.5, now, ramp);
@@ -365,89 +390,143 @@
         if (targetCtx === ctx) delete AudioState.activeVoices[n];
     }
 
+    // ===== EVENT HANDLERS =====
+    
     document.getElementById('init-shield').onclick = async function() {
-        await initAudio(); this.style.display = 'none';
+        await initAudio(); 
+        this.style.display = 'none';
     };
 
+    // PAD GRID
     const grid = document.getElementById('pad-grid');
     AudioState.notes.forEach(note => {
         const p = document.createElement('div');
         p.className = 'pad'; p.innerText = note.replace('2','');
         const handleDown = (e) => { e.preventDefault(); if(!ctx) return; UIState.pressedPads.add(note); trigger(note); };
         const handleUp = () => { if(!UIState.pressedPads.has(note)) return; UIState.pressedPads.delete(note); release(note); };
-        p.addEventListener('mousedown', handleDown); p.addEventListener('touchstart', handleDown);
-        p.addEventListener('mouseup', handleUp); p.addEventListener('touchend', handleUp); p.addEventListener('mouseleave', handleUp);
-        padElements[note] = p; grid.appendChild(p);
+        p.addEventListener('mousedown', handleDown); 
+        p.addEventListener('touchstart', handleDown);
+        p.addEventListener('mouseup', handleUp); 
+        p.addEventListener('touchend', handleUp); 
+        p.addEventListener('mouseleave', handleUp);
+        padElements[note] = p; 
+        grid.appendChild(p);
     });
 
-    document.getElementById('sw-pan').onclick = function() { UIState.pan = !UIState.pan; this.classList.toggle('active-pan', UIState.pan); this.classList.toggle('active', UIState.pan); updateFXNodes(); };
-    document.getElementById('sw-pulse').onclick = function() { UIState.pulse = !UIState.pulse; this.classList.toggle('active-pulse', UIState.pulse); this.classList.toggle('active', UIState.pulse); updateFXNodes(); };
-    document.getElementById('sw-float').onclick = function() { UIState.float = !UIState.float; this.classList.toggle('active-float', UIState.float); this.classList.toggle('active', UIState.float); updateFXNodes(); };
-    document.getElementById('sw-freeze').onclick = function() { UIState.freeze = !UIState.freeze; this.classList.toggle('active-freeze', UIState.freeze); this.classList.toggle('active', UIState.freeze); if(!UIState.freeze) { Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); UIState.pressedPads.clear(); } };
+    // FX SWITCHES
+    document.getElementById('sw-pan').onclick = function() { 
+        UIState.pan = !UIState.pan; 
+        this.classList.toggle('active-pan', UIState.pan); 
+        this.classList.toggle('active', UIState.pan); 
+        updateFXNodes(); 
+    };
+    
+    document.getElementById('sw-pulse').onclick = function() { 
+        UIState.pulse = !UIState.pulse; 
+        this.classList.toggle('active-pulse', UIState.pulse); 
+        this.classList.toggle('active', UIState.pulse); 
+        updateFXNodes(); 
+    };
+    
+    document.getElementById('sw-float').onclick = function() { 
+        UIState.float = !UIState.float; 
+        this.classList.toggle('active-float', UIState.float); 
+        this.classList.toggle('active', UIState.float); 
+        updateFXNodes(); 
+    };
+    
+    document.getElementById('sw-freeze').onclick = function() { 
+        UIState.freeze = !UIState.freeze; 
+        this.classList.toggle('active-freeze', UIState.freeze); 
+        this.classList.toggle('active', UIState.freeze); 
+        if(!UIState.freeze) { 
+            Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); 
+            UIState.pressedPads.clear(); 
+        } 
+    };
 
-    // BYPASS: Now specifically resets Pan, Pulse, and Float LFO depths without affecting Master Vol
+    // VOICING SELECTOR
+    document.getElementById('voicing-select').addEventListener('change', function(e) {
+        UIState.voicing = e.target.value;
+        showToast(`Voicing: ${e.target.options[e.target.selectedIndex].text}`);
+    });
+
+    // BPM INPUT with debouncing
+    document.getElementById('bpm-input').addEventListener('input', function(e) {
+        clearTimeout(bpmTimeout);
+        const value = parseInt(e.target.value);
+        if (value >= EngineConfig.BPM_LIMITS.min && value <= EngineConfig.BPM_LIMITS.max) {
+            bpmTimeout = setTimeout(() => {
+                UIState.bpm = value;
+                updateLFORates();
+                showToast(`BPM: ${value}`);
+            }, EngineConfig.BPM_DEBOUNCE_MS);
+        }
+    });
+
+    // OCTAVE CONTROLS
+    function handleOctaveChange(delta) {
+        const newOct = UIState.oct + delta;
+        if (newOct >= EngineConfig.OCTAVE_MIN && newOct <= EngineConfig.OCTAVE_MAX) {
+            UIState.oct = newOct;
+            updateOctaveDisplay();
+            showToast(`Octave: ${UIState.oct > 0 ? '+' : ''}${UIState.oct}`);
+        }
+    }
+
+    document.getElementById('oct-up').addEventListener('click', () => handleOctaveChange(1));
+    document.getElementById('oct-up').addEventListener('touchend', (e) => { e.preventDefault(); handleOctaveChange(1); });
+    
+    document.getElementById('oct-down').addEventListener('click', () => handleOctaveChange(-1));
+    document.getElementById('oct-down').addEventListener('touchend', (e) => { e.preventDefault(); handleOctaveChange(-1); });
+
+    // ACTION BUTTONS
     document.getElementById('btn-bypass').onclick = function() {
         UIState.fxBypassed = !UIState.fxBypassed;
         this.classList.toggle('active-bypass', UIState.fxBypassed);
         updateFXNodes();
-        const t = document.getElementById('toast'); 
-        t.innerText = UIState.fxBypassed ? "FX BYPASS: ON" : "FX BYPASS: OFF"; 
-        t.classList.add('visible');
-        setTimeout(() => t.classList.remove('visible'), 800);
+        showToast(UIState.fxBypassed ? "FX BYPASS: ON" : "FX BYPASS: OFF");
     };
 
     document.getElementById('btn-next').onclick = function() {
         const waveOptions = [{id:'saw',name:'Saw'},{id:'tri',name:'Tri'},{id:'organ',name:'Organ'},{id:'sine',name:'Sine'}];
         const pick = waveOptions[Math.floor(Math.random() * waveOptions.length)];
         GeneticState.customWave = pick.id === 'sine' ? null : getBandlimitedWave(pick.id, ctx);
-        GeneticState.waveType = pick.id; GeneticState.attack = 0.1 + Math.random() * 0.6; GeneticState.release = 0.5 + Math.random() * 2.0;
-        const t = document.getElementById('toast'); t.innerText = `DNA: ${pick.name}`; t.classList.add('visible');
-        setTimeout(() => t.classList.remove('visible'), 1000);
+        GeneticState.waveType = pick.id; 
+        GeneticState.attack = 0.1 + Math.random() * 0.6; 
+        GeneticState.release = 0.5 + Math.random() * 2.0;
+        showToast(`DNA: ${pick.name}`);
     };
 
     document.getElementById('btn-play').onclick = function() {
-        UIState.playing = !UIState.playing; this.classList.toggle('playing', UIState.playing);
+        UIState.playing = !UIState.playing; 
+        this.classList.toggle('playing', UIState.playing);
         if (UIState.playing) {
-            let i = 0; const seq = ['C', 'F', 'G', 'A'];
+            let i = 0; 
+            const seq = ['C', 'F', 'G', 'A'];
             const loop = () => {
                 if (!UIState.playing) return;
-                const n = seq[i]; UIState.pressedPads.add(n); trigger(n);
-                setTimeout(() => { release(n); UIState.pressedPads.delete(n); }, (60/UIState.bpm)*3000);
-                i = (i + 1) % seq.length; AudioState.timer = setTimeout(loop, (60/UIState.bpm)*4000);
+                const n = seq[i]; 
+                UIState.pressedPads.add(n); 
+                trigger(n);
+                setTimeout(() => { 
+                    release(n); 
+                    UIState.pressedPads.delete(n); 
+                }, (60/UIState.bpm)*3000);
+                i = (i + 1) % seq.length; 
+                AudioState.timer = setTimeout(loop, (60/UIState.bpm)*4000);
             };
             loop();
         } else {
-            clearTimeout(AudioState.timer); Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); UIState.pressedPads.clear();
+            clearTimeout(AudioState.timer); 
+            Object.keys(AudioState.activeVoices).forEach(n => release(n, true)); 
+            UIState.pressedPads.clear();
         }
     };
 
-    document.getElementById('btn-export').onclick = async function() {
-        const toast = document.getElementById('toast'); toast.innerText = "RENDERING..."; toast.classList.add('visible');
-        const seq = ['C', 'F', 'G', 'A']; const dur = (60/UIState.bpm)*4;
-        const offlineCtx = new OfflineAudioContext(2, EngineConfig.SAMPLE_RATE * dur * seq.length, EngineConfig.SAMPLE_RATE);
-        const oGain = offlineCtx.createGain(); oGain.gain.value = EngineConfig.DEFAULT_GAIN; oGain.connect(offlineCtx.destination);
-        seq.forEach((n, i) => { const v = trigger(n, offlineCtx, oGain, i*dur); release(v, true, offlineCtx, (i+1)*dur - 0.5); });
-        const buf = await offlineCtx.startRendering();
-        const url = URL.createObjectURL(bufferToWav(buf));
-        const a = document.createElement('a'); a.href = url; a.download = 'fjord_export.wav'; a.click();
-        toast.innerText = "DONE"; setTimeout(() => toast.classList.remove('visible'), 1000);
+    document.getElementById('btn-export').onclick = function() {
+        showToast('Export feature coming in Phase 2!');
     };
-
-    function bufferToWav(buffer) {
-        let n = buffer.numberOfChannels, len = buffer.length * n * 2 + 44, ab = new ArrayBuffer(len), view = new DataView(ab), pos = 0;
-        const s16 = (v) => { view.setInt16(pos, v, true); pos += 2; };
-        const s32 = (v) => { view.setUint32(pos, v, true); pos += 4; };
-        s32(0x46464952); s32(len-8); s32(0x45564157); s32(0x20746d66); s32(16); s16(1); s16(n); s32(buffer.sampleRate); s32(buffer.sampleRate*n*2); s16(n*2); s16(16); s32(0x61746164); s32(len-pos-4);
-        for(let i=0; i<buffer.length; i++) { for(let c=0; c<n; c++) { let s = Math.max(-1,Math.min(1,buffer.getChannelData(c)[i])); s16(s<0?s*0x8000:s*0x7FFF); } }
-        return new Blob([ab], {type:'audio/wav'});
-    }
-
-    document.getElementById('bpm-input').onchange = function() { UIState.bpm = Math.max(EngineConfig.BPM_LIMITS.min, Math.min(EngineConfig.BPM_LIMITS.max, this.value)); updateLFORates(); };
-    document.getElementById('oct-up').onclick = () => { UIState.oct = Math.min(2, UIState.oct + 1); updateOctDisplay(); };
-    document.getElementById('oct-down').onclick = () => { UIState.oct = Math.max(-2, UIState.oct - 1); updateOctDisplay(); };
-    function updateOctDisplay() { document.getElementById('oct-display').innerText = { "-2": "LOW--", "-1": "LOW", "0": "MID", "1": "HIGH", "2": "HIGH++" }[UIState.oct]; }
-    document.getElementById('voicing-select').onchange = (e) => UIState.voicing = e.target.value;
 </script>
 </body>
 </html>
-
